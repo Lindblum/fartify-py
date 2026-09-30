@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+uploads/*
+!uploads/.gitkeep
+output/*
+!output/.gitkeep
+jobs_state.json
+jobs_state.json.tmp
+timings.json
+samples/spectrograms/
+timings.json.tmp
+samples/*_index.json.bak
+.DS_Store
+*.egg-info/
+.pytest_cache/

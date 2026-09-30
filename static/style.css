@@ -1,0 +1,422 @@
+:root {
+  --bg: #10131a;
+  --card-bg: #1a1f2b;
+  --accent: #ffb347;
+  --accent-dark: #d98e2b;
+  --text: #eef1f7;
+  --muted: #9aa3b5;
+  --border: #2b3244;
+  --error: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 20px 80px;
+}
+
+header { text-align: center; margin-bottom: 32px; }
+
+h1 { font-size: 2.4rem; margin: 0 0 8px; }
+.emoji { display: inline-block; }
+.tagline { color: var(--muted); margin: 0; }
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  margin-bottom: 20px;
+}
+
+.hidden { display: none; }
+
+#dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 40px 16px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+#dropzone:hover, #dropzone.dragover {
+  border-color: var(--accent);
+  background: rgba(255, 179, 71, 0.06);
+}
+
+#dropzone-text { font-size: 1.05rem; }
+.hint { color: var(--muted); font-size: 0.85rem; }
+
+.options { margin-top: 18px; }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field-label { font-size: 0.9rem; font-weight: 600; }
+.field .hint { font-size: 0.78rem; line-height: 1.35; }
+
+select, input[type="number"] {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+select:focus, input[type="number"]:focus { outline: none; border-color: var(--accent); }
+input[type="number"]:invalid { border-color: var(--error); }
+input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+
+.checkbox-row { display: flex; align-items: center; gap: 8px; }
+
+#option-notes .hint { margin: 8px 0 0; color: var(--accent); line-height: 1.4; }
+
+.calibration { margin-top: 14px; }
+
+.calibration summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+  user-select: none;
+}
+.calibration summary:hover { color: var(--accent); }
+
+.field-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 14px 0 0;
+  padding: 12px 14px 14px;
+  min-width: 0;
+}
+
+.field-group legend { color: var(--muted); font-size: 0.8rem; padding: 0 6px; }
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 480px) {
+  .field-grid { grid-template-columns: 1fr; }
+}
+
+button.link-button {
+  width: auto;
+  margin-top: 12px;
+  padding: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+}
+button.link-button:hover:not(:disabled) { background: none; color: var(--accent); }
+
+button, .button {
+  display: inline-block;
+  margin-top: 18px;
+  width: 100%;
+  text-align: center;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #1a1207;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+button:hover:not(:disabled), .button:hover { background: var(--accent-dark); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.button.secondary:hover { border-color: var(--accent); }
+
+.site-footer {
+  max-width: 640px;
+  margin: 8px auto 0;
+  padding: 0 20px 40px;
+  background: none;
+  border: none;
+}
+
+.sample-count { color: var(--muted); font-size: 0.85rem; margin: 0; text-align: center; }
+.sample-count a { color: var(--muted); text-decoration: underline; text-decoration-color: var(--border); }
+.sample-count a:hover { color: var(--accent); text-decoration-color: var(--accent); }
+
+.tagline a { color: var(--accent); text-decoration: none; }
+.tagline a:hover { text-decoration: underline; }
+
+.samples {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sample-card { margin-bottom: 0; padding: 20px; }
+
+.sample-filename {
+  font-weight: 600;
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
+}
+
+.sample-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 8px 0 0;
+}
+
+.empty-state { color: var(--muted); text-align: center; }
+
+#sample-upload-card #sample-dropzone { padding: 28px 16px; }
+
+.sample-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.sample-actions .button {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
+}
+
+.sample-actions .delete-sample {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+#sample-upload-status { text-align: center; margin: 12px 0 0; }
+
+.progress-bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  /* matches the status poll interval, so the bar glides between updates instead of stepping */
+  transition: width 0.9s linear;
+}
+
+#progress-stage { color: var(--muted); margin: 0; text-transform: capitalize; }
+
+.result-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+.result-meta strong { color: var(--text); }
+
+audio { width: 100%; margin-bottom: 8px; }
+
+/* Spectrograms are one pixel per analysis frame -- a sample is a few dozen
+   pixels wide, a whole song thousands -- so they're stretched/squeezed to
+   the card's width at a fixed height rather than shown at natural size. */
+img.spectrogram {
+  display: block;
+  width: 100%;
+  height: 96px;
+  object-fit: fill;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* Wraps a spectrogram so the playhead can be positioned over it. */
+.spectrogram-frame { position: relative; display: block; }
+.sample-card .spectrogram-frame { margin-bottom: 10px; }
+
+/* Vertical line marking the audio player's current position. */
+.playhead {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+.playhead.hidden { display: none; }
+
+.result-spectrograms {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.result-spectrograms.hidden { display: none; }
+
+.spectrogram-link { display: block; text-decoration: none; }
+.spectrogram-link .hint { display: block; margin-bottom: 4px; }
+.spectrogram-link:hover img.spectrogram { border-color: var(--accent); }
+
+
+
+.error h2 { color: var(--error); }
+#error-message { color: var(--muted); }
+
+.jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.job-card { margin-bottom: 0; }
+
+.job-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.job-filename {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-status {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--muted);
+}
+
+.job-status.status-queued,
+.job-status.status-processing { background: rgba(255, 179, 71, 0.15); color: var(--accent); }
+.job-status.status-done { background: rgba(88, 214, 141, 0.15); color: #58d68d; }
+.job-status.status-error { background: rgba(255, 107, 107, 0.15); color: var(--error); }
+
+.job-progress .progress-bar { margin: 0 0 8px; }
+.job-progress .progress-stage { margin: 0; }
+
+.job-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.job-actions .button {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
+}
+
+.job-actions .delete-job {
+  flex: 0 0 auto;
+  margin-left: auto; /* stays pinned to the right whether it's alone or beside the download buttons */
+}
+
+button.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-top: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+button.icon-button:hover:not(:disabled) {
+  background: rgba(255, 107, 107, 0.1);
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.modal-overlay.hidden { display: none; }
+
+.modal-panel {
+  max-width: 380px;
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.modal-panel p {
+  margin: 0 0 20px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-actions .button {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
+}
+
+.button.danger { background: var(--error); color: #2a0d0d; }
+.button.danger:hover { background: #ff8787; }

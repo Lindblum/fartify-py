@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fartify 💨</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1>Fartify <span class="emoji">💨</span></h1>
+      <p class="tagline">Upload a song. We isolate the vocals (or another layer), extract the melody, and replay it as farts.</p>
+    </header>
+
+    <section id="upload-card" class="card">
+      <form id="upload-form" novalidate>
+        <label id="dropzone" for="file-input">
+          <span id="dropzone-text">Drop an audio file here, or click to choose one</span>
+          <span class="hint">MP3, WAV, M4A, FLAC, OGG</span>
+        </label>
+        <input id="file-input" type="file" name="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac" hidden />
+
+        <div class="options">
+          <div class="field-grid">
+            <label class="field">
+              <span class="field-label">Algorithm</span>
+              <select id="algorithm" name="algorithm">
+                {% for a in algorithms %}
+                <option value="{{ a.value }}" data-note="{{ a.note }}">{{ a.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Layer to fartify</span>
+              <select id="layer" name="layer">
+                {% for l in layers %}
+                <option value="{{ l.value }}" data-note="{{ l.note }}">{{ l.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+          <div id="option-notes"></div>
+
+          <details id="calibration" class="calibration">
+            <summary>Calibration</summary>
+            {% for group in setting_groups %}
+            <fieldset class="field-group"{% if group.algorithms %} data-algorithms="{{ group.algorithms | join(' ') }}"{% endif %}>
+              <legend>{{ group.title }}</legend>
+              <div class="field-grid">
+                {% for f in group.fields %}
+                {% if f.kind == "checkbox" %}
+                <label class="field checkbox-field">
+                  <span class="checkbox-row">
+                    <input type="checkbox" name="{{ f.name }}" data-setting data-label="{{ f.label }}"{% if f.default %} checked{% endif %} />
+                    <span class="field-label">{{ f.label }}</span>
+                  </span>
+                  <span class="hint">{{ f.help }}</span>
+                </label>
+                {% else %}
+                <label class="field">
+                  <span class="field-label">{{ f.label }}</span>
+                  <input type="number" name="{{ f.name }}" data-setting data-label="{{ f.label }}" value="{{ f.default }}" min="{{ f.min }}" max="{{ f.max }}" step="{{ f.step }}" required />
+                  <span class="hint">{{ f.help }}</span>
+                </label>
+                {% endif %}
+                {% endfor %}
+              </div>
+            </fieldset>
+            {% endfor %}
+            <button type="button" id="reset-settings" class="link-button">Reset to defaults</button>
+          </details>
+        </div>
+
+        <button id="submit-btn" type="submit" disabled>Fartify!</button>
+      </form>
+    </section>
+
+    <section id="jobs" class="jobs"></section>
+  </main>
+
+  <footer class="site-footer">
+    <p class="sample-count"><a href="{{ url_for('samples_page') }}">{{ sample_count }} fart samples in library</a></p>
+  </footer>
+
+  <template id="job-card-template">
+    <div class="job-card card">
+      <div class="job-header">
+        <span class="job-filename"></span>
+        <span class="job-status"></span>
+      </div>
+      <div class="job-progress">
+        <div class="progress-bar"><div class="progress-fill"></div></div>
+        <p class="progress-stage"></p>
+      </div>
+      <div class="job-result hidden">
+        <div class="result-meta"></div>
+        <div class="result-spectrograms hidden">
+          <a class="spectrogram-link layer-spectrogram" target="_blank" rel="noopener" title="Open full size">
+            <span class="hint">Layer spectrogram</span>
+            <span class="spectrogram-frame">
+              <img class="spectrogram" loading="lazy" alt="Spectrogram of the isolated layer" />
+              <span class="playhead hidden"></span>
+            </span>
+          </a>
+          <a class="spectrogram-link approx-spectrogram" target="_blank" rel="noopener" title="Open full size">
+            <span class="hint">Rebuilt from samples</span>
+            <span class="spectrogram-frame">
+              <img class="spectrogram" loading="lazy" alt="Spectrogram rebuilt from sample spectrograms" />
+              <span class="playhead hidden"></span>
+            </span>
+          </a>
+        </div>
+        <audio class="player" controls></audio>
+      </div>
+      <div class="job-error hidden">
+        <p class="error-message"></p>
+      </div>
+      <div class="job-actions">
+        <a class="button download-audio hidden" download title="Download audio (WAV)">⬇️ WAV</a>
+        <a class="button secondary download-midi hidden" download title="Download melody (MIDI)">⬇️ MIDI</a>
+        <button type="button" class="icon-button delete-job" title="Delete job" aria-label="Delete job">🗑️</button>
+      </div>
+    </div>
+  </template>
+
+  <div id="confirm-overlay" class="modal-overlay hidden">
+    <div class="modal-panel card">
+      <p id="confirm-message"></p>
+      <div class="modal-actions">
+        <button type="button" id="confirm-no" class="button secondary">Cancel</button>
+        <button type="button" id="confirm-yes" class="button danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.FARTIFY_SAMPLES = {{ sample_files | tojson }};
+  </script>
+  <script src="{{ url_for('static', filename='playhead.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

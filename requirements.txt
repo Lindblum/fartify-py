@@ -1,0 +1,22 @@
+# Fartify — dependencies
+#
+# Core audio / DSP
+numpy>=1.24
+scipy>=1.11
+librosa>=0.10
+soundfile>=0.12
+pydub>=0.25          # MP3 <-> WAV via ffmpeg (install ffmpeg separately)
+pretty_midi>=0.2.10  # MIDI export of extracted note data
+
+# Web UI
+flask>=3.0
+
+# Vocal separation (heavy — CPU-only torch is fine)
+torch>=2.1
+demucs>=4.0
+
+# Melody / pitch extraction (CREPE via the lightweight PyTorch port)
+torchcrepe>=0.0.23
+
+# Dev / test
+pytest>=7.4

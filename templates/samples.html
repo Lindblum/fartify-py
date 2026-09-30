@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fartify sample library</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1>Sample library <span class="emoji">💨</span></h1>
+      <p class="tagline">{{ sample_count }} fart samples analyzed for matching. <a href="{{ url_for('index') }}">← Back to Fartify</a></p>
+    </header>
+
+    <section id="sample-upload-card" class="card">
+      <form id="sample-upload-form">
+        <label id="sample-dropzone" for="sample-file-input">
+          <span id="sample-dropzone-text">Drop a fart sample WAV here, or click to choose one</span>
+          <span class="hint">WAV only</span>
+        </label>
+        <input id="sample-file-input" type="file" name="file" accept=".wav" hidden />
+      </form>
+      <p id="sample-upload-status" class="hint hidden"></p>
+    </section>
+
+    <section id="samples" class="samples">
+      {% for s in samples %}
+      <div class="sample-card card" data-filename="{{ s.filename }}">
+        <p class="sample-filename">{{ s.filename }}</p>
+        <div class="spectrogram-frame">
+          <img class="spectrogram" loading="lazy" src="{{ s.spectrogram_url }}" alt="Spectrogram of {{ s.filename }}" title="Spectrogram: time left to right, pitch bottom to top (logarithmic), brightness = amplitude" />
+          <span class="playhead hidden"></span>
+        </div>
+        <audio class="player" controls preload="none" src="{{ url_for('serve_sample', filename=s.filename) }}"></audio>
+        <p class="sample-meta">
+          <span>{{ s.length }}</span>
+          <span>{{ s.volume }}</span>
+          <span>{{ s.pitch }}</span>
+          <span>emphasis @ {{ s.emphasis }}</span>
+        </p>
+        <div class="sample-actions">
+          <a class="button secondary download-sample" href="{{ url_for('serve_sample', filename=s.filename) }}?download=1" download title="Download WAV">⬇️ WAV</a>
+          <button type="button" class="icon-button delete-sample" title="Delete sample" aria-label="Delete sample">🗑️</button>
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+    <p id="empty-state" class="empty-state {{ 'hidden' if samples else '' }}">No samples in the library yet. Drop a WAV above to add one.</p>
+  </main>
+
+  <div id="confirm-overlay" class="modal-overlay hidden">
+    <div class="modal-panel card">
+      <p id="confirm-message"></p>
+      <div class="modal-actions">
+        <button type="button" id="confirm-no" class="button secondary">Cancel</button>
+        <button type="button" id="confirm-yes" class="button danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <template id="sample-card-template">
+    <div class="sample-card card">
+      <p class="sample-filename"></p>
+      <div class="spectrogram-frame">
+        <img class="spectrogram" loading="lazy" alt="" title="Spectrogram: time left to right, pitch bottom to top (logarithmic), brightness = amplitude" />
+        <span class="playhead hidden"></span>
+      </div>
+      <audio class="player" controls preload="none"></audio>
+      <p class="sample-meta">
+        <span class="meta-length"></span>
+        <span class="meta-volume"></span>
+        <span class="meta-pitch"></span>
+        <span class="meta-emphasis"></span>
+      </p>
+      <div class="sample-actions">
+        <a class="button secondary download-sample" download title="Download WAV">⬇️ WAV</a>
+        <button type="button" class="icon-button delete-sample" title="Delete sample" aria-label="Delete sample">🗑️</button>
+      </div>
+    </div>
+  </template>
+
+  <script src="{{ url_for('static', filename='playhead.js') }}"></script>
+  <script src="{{ url_for('static', filename='samples.js') }}"></script>
+</body>
+</html>
