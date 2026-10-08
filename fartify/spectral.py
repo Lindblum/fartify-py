@@ -34,16 +34,25 @@ import os
 from dataclasses import asdict, dataclass
 
 import numpy as np
+from scipy.ndimage import maximum_filter1d
 from scipy.signal import correlate
 
 from . import spectrogram
-from .notes import Note
+from .notes import Note, detect_onsets
 from .sample_library import SampleRecord
 from .settings import PipelineSettings
 from .synth import pitch_shift
 from .utils import TARGET_SR, hz_to_midi, load_audio, normalize_peak
 
 logger = logging.getLogger("fartify.spectral")
+
+# The detail floor (settings.spectral_stop_percent) compares a placement
+# with the strongest one possible within this many seconds either side.
+STOP_WINDOW_SEC = 2.0
+
+# A sample cut off at the next beat fades out over this long instead of
+# stopping dead (which clicks).
+CUT_FADE_SEC = 0.015
 
 
 @dataclass
@@ -54,6 +63,9 @@ class Placement:
     time_sec: float  # where the sample starts
     semitones: float  # pitch adjustment, + is up
     gain: float  # amplification (linear)
+    # Where the sample is cut off (with a short fade), so it ends when the
+    # next beat starts; None = it plays out in full.
+    duration_sec: float | None = None
 
 
 @dataclass
@@ -83,14 +95,18 @@ def decompose(
     max_placements: int,
     stop_fraction: float,
     max_gain: float,
+    stop_window: int = 0,
     progress_cb=None,
 ) -> tuple[list[tuple[int, int, int, float]], np.ndarray]:
     """Matching pursuit of `target` (rows x frames) over `atoms` (each
     rows x its own frame count). Returns ([(atom index, row shift, start
     frame, gain)], approximation).
 
-    stop_fraction: stop once the best remaining placement would explain
-    less than this fraction of what the very first one did.
+    stop_fraction: a placement is only made if it would explain at least
+    this fraction of what the strongest placement within stop_window
+    frames of it could have before matching began; matching stops when no
+    such placement is left. Local rather than song-wide, so a quiet passage
+    isn't dropped for being quiet next to a loud one.
     """
     n_rows, n_frames = target.shape
     shift_span = 2 * max_shift_rows + 1
@@ -139,6 +155,12 @@ def decompose(
     for t0 in range(0, n_frames, 2048):
         refresh(t0, min(t0 + 2048, n_frames))
 
+    # Per frame, the least a placement starting there must explain.
+    if stop_window > 0:
+        floor = stop_fraction * maximum_filter1d(best_score, size=2 * stop_window + 1)
+    else:
+        floor = np.full(n_frames, stop_fraction * float(best_score.max()), dtype=np.float32)
+
     # pair_overlap[s][s2][dp + 2 * max_shift_rows, dt + frames(s2) - 1] =
     # <atom s2, atom s moved by dp rows and dt frames>. Built per chosen
     # atom the first time it's used, since most runs lean on a subset.
@@ -155,16 +177,11 @@ def decompose(
 
     placements: list[tuple[int, int, int, float]] = []
     approx_canvas = np.zeros_like(canvas)
-    first_score = None
 
     for n in range(max_placements):
-        t = int(best_score.argmax())
+        t = int(np.where(best_score >= floor, best_score, 0.0).argmax())
         score = float(best_score[t])
-        if score <= 0:
-            break
-        if first_score is None:
-            first_score = score
-        elif score < stop_fraction * first_score:
+        if score <= 0 or score < floor[t]:
             break
 
         s, i = divmod(int(best_choice[t]), shift_span)
@@ -192,6 +209,67 @@ def decompose(
     return placements, approximation
 
 
+def fit_beats(
+    target: np.ndarray,
+    atoms: list[np.ndarray],
+    beat_frames: list[int],
+    max_shift_rows: int,
+    stop_fraction: float,
+    max_gain: float,
+    stop_window: int = 0,
+    progress_cb=None,
+) -> list[tuple[int, int, int, float, int | None]]:
+    """One sample per beat. Each beat's window runs from its onset frame to
+    the next beat's (the last one to the end of `target`); the sample,
+    pitch shift and gain that best fit that window's slice of `target`
+    are chosen by the same least-squares measure as decompose. A sample
+    longer than its window is judged -- and later played -- cut off at the
+    window's end, so it never runs over the next beat.
+
+    Returns [(atom index, row shift, start frame, gain, cut length in
+    frames or None)]. A beat whose best fit explains less than
+    stop_fraction of the best within stop_window frames of it is left
+    empty, as is one nothing fits at all.
+    """
+    n_rows, n_frames = target.shape
+    starts = sorted({f for f in beat_frames if 0 <= f < n_frames})
+    best: list[tuple[float, tuple]] = []
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else n_frames
+        width = end - start
+        # Rows padded so every shift is a plain translation, as in decompose:
+        # a stamp shifted past the top or bottom still pays for what it loses.
+        window = np.pad(target[:, start:end], ((max_shift_rows, max_shift_rows), (0, 0)))
+        choice, choice_score = None, 0.0
+        for s, atom in enumerate(atoms):
+            stamp = atom[:, :width]
+            energy = float(np.sum(stamp.astype(np.float64) ** 2))
+            if energy <= 1e-12:
+                continue
+            # overlap[i] = <window, stamp shifted by (i - max_shift_rows) rows>
+            overlap = correlate(window[:, : stamp.shape[1]], stamp, mode="valid", method="fft")[:, 0]
+            gain = np.clip(overlap / energy, 0.0, max_gain)
+            scores = gain * (2.0 * overlap - gain * energy)
+            i = int(scores.argmax())
+            if scores[i] > choice_score:
+                cut = width if atom.shape[1] > width else None
+                choice, choice_score = (s, i - max_shift_rows, start, float(gain[i]), cut), float(scores[i])
+        if choice is not None:
+            best.append((choice_score, choice))
+        if progress_cb:
+            progress_cb((n + 1) / len(starts))
+
+    if not best:
+        return []
+    scores = np.array([sc for sc, _ in best])
+    frames = np.array([c[2] for _, c in best])
+    if stop_window > 0:
+        nearby = np.array([scores[np.abs(frames - f) <= stop_window].max() for f in frames])
+    else:
+        nearby = np.full(len(scores), scores.max())
+    return [c for (sc, c), ref in zip(best, nearby) if sc >= stop_fraction * ref]
+
+
 def match_layer(
     layer_audio: np.ndarray,
     sr: int,
@@ -211,25 +289,58 @@ def match_layer(
     atoms = [spectrogram.load_sample_spectrogram(samples_dir, r.filename) for r in sample_records]
     duration_sec = len(layer_audio) / sr
 
-    raw, approximation = decompose(
-        match_target,
-        atoms,
+    # Match on contrast-compressed pictures. (g * A) ** gamma = g ** gamma *
+    # A ** gamma, so a gain found there is a gain ** (1 / gamma) in reality.
+    gamma = settings.spectral_gamma
+    common = dict(
         max_shift_rows=int(round(settings.max_pitch_shift_semitones * rows_per_semitone)),
-        max_placements=max(1, int(round(settings.spectral_density * duration_sec))),
         stop_fraction=settings.spectral_stop_percent / 100.0,
-        max_gain=settings.spectral_max_gain,
+        max_gain=settings.spectral_max_gain**gamma,
+        stop_window=int(round(STOP_WINDOW_SEC * sr / spectrogram.HOP_LENGTH)),
         progress_cb=progress_cb,
     )
+    # Beat mode places samples at the onsets themselves (10 ms resolution),
+    # not at the spectrogram column they round to.
+    onset_at_frame: dict[int, float] = {}
+    if settings.spectral_fit_beats:
+        for t in detect_onsets(layer_audio, sr):
+            onset_at_frame.setdefault(int(round(t * sr / spectrogram.HOP_LENGTH)), float(t))
+        raw = fit_beats(
+            match_target**gamma, [a**gamma for a in atoms], sorted(onset_at_frame), **common
+        )
+    else:
+        raw = decompose(
+            match_target**gamma,
+            [a**gamma for a in atoms],
+            max_placements=max(1, int(round(settings.spectral_density * duration_sec))),
+            **common,
+        )[0]
+        raw = [(s, rows, frame, gain, None) for s, rows, frame, gain in raw]
+    raw = [(s, rows, frame, gain ** (1.0 / gamma), cut) for s, rows, frame, gain, cut in raw]
+
+    # The approximation as it will actually sound: real gains, amplitudes
+    # adding linearly (the compressed match only approximately adds up).
+    n_rows, n_frames = match_target.shape
+    canvas = np.zeros((n_rows, n_frames + max(a.shape[1] for a in atoms)), dtype=np.float32)
+    for s, rows, frame, gain, cut in raw:
+        stamp = atoms[s][:, :cut]
+        canvas[:, frame : frame + stamp.shape[1]] += gain * _shift_rows(stamp, rows)
+    approximation = canvas[:, :n_frames]
+
+    def frame_time(frame: int) -> float:
+        return onset_at_frame.get(frame, float(spectrogram.frames_to_seconds(frame, sr)))
 
     placements = sorted(
         (
             Placement(
                 filename=sample_records[s].filename,
-                time_sec=float(spectrogram.frames_to_seconds(frame, sr)),
+                time_sec=frame_time(frame),
                 semitones=rows / rows_per_semitone,
                 gain=gain,
+                # a cut ends where the next beat starts
+                duration_sec=None if cut is None else frame_time(frame + cut) - frame_time(frame),
             )
-            for s, rows, frame, gain in raw
+            for s, rows, frame, gain, cut in raw
         ),
         key=lambda p: p.time_sec,
     )
@@ -249,7 +360,8 @@ def render_placements(
     progress_cb=None,
 ) -> np.ndarray:
     """Turn a list of Placements into audio: each sample pitch-shifted (its
-    length unchanged), scaled, and added in at its time."""
+    length unchanged), scaled, cut off with a short fade if the placement
+    says so, and added in at its time."""
     output = np.zeros(max(int(round(total_duration_sec * sr)), 1), dtype=np.float32)
     raw_audio: dict[str, np.ndarray] = {}
     # The same sample at the same shift usually recurs many times over a
@@ -265,6 +377,10 @@ def render_placements(
                 raw_audio[p.filename], _ = load_audio(os.path.join(samples_dir, p.filename), sr=sr)
             shifted_audio[key] = pitch_shift(raw_audio[p.filename], sr, 2.0 ** (p.semitones / 12.0))
         clip = shifted_audio[key]
+        if p.duration_sec is not None and p.duration_sec * sr < len(clip):
+            clip = clip[: max(int(round(p.duration_sec * sr)), 1)].copy()
+            fade = min(int(CUT_FADE_SEC * sr), len(clip))
+            clip[len(clip) - fade :] *= np.linspace(1.0, 0.0, fade, dtype=np.float32)
 
         start = int(round(p.time_sec * sr))
         end = min(start + len(clip), len(output))
@@ -287,6 +403,8 @@ def placements_to_notes(placements: list[Placement], sample_records: list[Sample
             continue
         freq = record.frequency_hz * 2.0 ** (p.semitones / 12.0)
         length = record.effective_duration_sec if record.effective_duration_sec > 0 else record.duration_sec
+        if p.duration_sec is not None:
+            length = min(length, p.duration_sec)
         notes.append(
             Note(
                 start_sec=p.time_sec,

@@ -36,7 +36,8 @@ DEFAULT_LAYER = "vocals"
 # Caveats shown under the input panel's dropdowns while that option is selected.
 OPTION_NOTES = {
     "spectral": "Rebuilds the layer's spectrogram out of sample spectrograms, instead of "
-    "extracting notes first. Samples keep their natural length; only timing, pitch and volume change.",
+    "extracting notes first. Samples are never stretched; only timing, pitch and volume change "
+    "(and, when fitting to beats, a sample is cut off at the next beat).",
     "drums": "In Classic, drums are unpitched: hits are found by onset detection instead of pitch "
     "tracking, so Pitch confidence, Note tolerance, Min note length and Gap bridging don't apply.",
     "other": "Guitars, keys and whatever else isn't vocals, bass or drums. Usually several "
@@ -136,17 +137,38 @@ class PipelineSettings:
         4.0, "Max stretch (x)", "classic", "Limit on time-stretching a sample, longer or shorter.", 1.0, 16.0, 0.5
     )
 
-    # --- Spectral Synthesis: spectrogram matching (see spectral.decompose) --
+    # --- Spectral Synthesis: spectrogram matching (see spectral.py) --------
+    # On: find the layer's beats (onsets) and fit one sample into each gap
+    # between consecutive beats (spectral.fit_beats). Off: place samples
+    # anywhere by matching pursuit (spectral.decompose).
+    spectral_fit_beats: bool = _option(
+        True, "Fit samples to beats", "spectral",
+        "One sample per detected beat, cut off if it would run into the next beat. "
+        "Off: samples are placed freely wherever they fit best.",
+    )
     spectral_density: float = _option(
-        6.0, "Max placements per second", "spectral", "Cap on how many samples are placed, per second of audio.",
+        6.0, "Max placements per second", "spectral",
+        "Cap on how many samples are placed, per second of audio (only when not fitting to beats).",
         0.5, 40.0, 0.5,
     )
     # Matching stops early once the best remaining placement explains less
-    # than this share of what the strongest one did -- past that point it's
-    # adding faint samples to chase detail nobody will hear.
+    # than this share of what the strongest one *in the same passage* did --
+    # past that point it's adding faint samples to chase detail nobody will
+    # hear. Judged per passage, so a quiet intro isn't measured against the
+    # loudest hit in the song.
     spectral_stop_percent: float = _option(
-        1.0, "Detail floor (%)", "spectral", "Stop once a placement would add less than this % of the strongest one.",
+        1.0, "Detail floor (%)", "spectral",
+        "Stop once a placement would add less than this % of the strongest one nearby.",
         0.0, 100.0, 0.1,
+    )
+    # Spectrograms are raised to this power before matching. Below 1 it
+    # compresses contrast, so quiet beats weigh more next to loud ones -- but
+    # it also lifts the quiet tails between hits, which makes long samples
+    # that span several hits look like good fits. 1 = match raw amplitudes.
+    spectral_gamma: float = _option(
+        1.0, "Contrast (gamma)", "spectral",
+        "Below 1, quiet sounds count more when picking the best fit, but long samples get favored over short ones.",
+        0.2, 1.0, 0.05,
     )
     spectral_max_gain: float = _option(
         4.0, "Max amplification (x)", "spectral", "Limit on boosting a sample to match the track.", 0.1, 32.0, 0.1

@@ -147,12 +147,28 @@ stamping sample spectrograms onto it. Each stamp — a *placement* — has:
   up or down is exactly a transposition),
 - an **amplification** (brightness).
 
-Placements are chosen by matching pursuit: take the one placement that
-explains the most of what's still unexplained, subtract it, repeat — until
-the per-second cap is reached or the next placement would add too little.
-The audio is then rendered straight from the list: each sample pitch-shifted
-(length unchanged), scaled, and added at its time. Samples are never
-time-stretched in this mode.
+By default (**Fit samples to beats**) placements follow the layer's beats:
+onsets are detected the same way Classic finds drum hits (spectral flux,
+judged against the hits nearby so a quiet intro still counts), and each gap
+from one onset to the next gets exactly one sample — the sample, pitch shift
+and gain that best fit that slice of the spectrogram. A sample longer than
+its gap is cut off with a short fade where the next beat starts, so one long
+sample never smears across several beats. Beats that are much weaker than
+the ones around them (under the **Detail floor**) are left empty.
+
+With that option off, placements are chosen freely by matching pursuit: take
+the one placement that explains the most of what's still unexplained,
+subtract it, repeat — until the per-second cap is reached or the next
+placement would add too little compared with the strongest one possible in
+the same passage (±2 s).
+
+Either way, matching runs on spectrograms raised to the **Contrast (gamma)**
+power (default 1, i.e. raw amplitude). Lowering it compresses loud against
+quiet so soft sounds weigh more, but it also lifts the quiet tails between
+hits, which favors long samples. The audio is then rendered straight from the
+list: each sample pitch-shifted (length unchanged), scaled, cut if its
+placement says so, and added at its time. Samples are never time-stretched
+in this mode.
 
 A finished job shows the layer's spectrogram next to the one rebuilt from
 samples, and how much of the layer's spectrogram energy the placements

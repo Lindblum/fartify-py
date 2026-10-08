@@ -180,6 +180,9 @@ HIT_N_FFT = 512
 # Two hits closer together than this are treated as one (a flam, or one hit's
 # attack smeared across adjacent frames).
 HIT_MIN_GAP_SEC = 0.06
+# An onset has to stand out against the strongest ones within this many
+# seconds either side (see _onset_analysis).
+ONSET_CONTEXT_SEC = 0.5
 # A hit lasts until the next one starts, but no longer than this -- a drum
 # stem's tail after a hit is mostly decay/bleed, not something to sustain a
 # fart over.
@@ -191,6 +194,63 @@ HIT_CENTROID_RANGE_HZ = (150.0, 6000.0)
 HIT_PITCH_RANGE_HZ = (50.0, 300.0)
 
 
+def _onset_analysis(y: np.ndarray, sr: int):
+    """Short-time spectrum of y and the frames where something starts.
+    Returns (freqs, frame_times, magnitudes, onset frame indices), or None
+    if y is too short to analyze.
+
+    Spectral flux (how much energy each frequency bin *gains* from one
+    frame to the next) spikes at every hit or note attack, and peaks that
+    stand clear of their local surroundings are taken as onsets."""
+    from scipy.ndimage import maximum_filter1d, median_filter
+    from scipy.signal import stft
+
+    hop = max(1, int(round(HIT_HOP_SEC * sr)))
+    if y.size < HIT_N_FFT * 2:
+        return None
+
+    freqs, frame_times, spec = stft(
+        y, fs=sr, nperseg=HIT_N_FFT, noverlap=HIT_N_FFT - hop, boundary=None, padded=False
+    )
+    mag = np.abs(spec)
+    if mag.shape[1] < 3:
+        return None
+
+    # Log-compress so a quiet hi-hat's onset isn't drowned out by the kick's.
+    log_mag = np.log1p(1000.0 * mag)
+    flux = np.concatenate([[0.0], np.maximum(np.diff(log_mag, axis=1), 0.0).sum(axis=0)])
+
+    # A frame is an onset if it's the biggest flux within +/- the minimum
+    # gap AND clears an adaptive threshold: well above what's typical right
+    # around it, and above a floor tied to the stronger onsets *nearby* --
+    # not song-wide, or a quiet intro's hits fall under a floor set by the
+    # loud chorus -- with a small song-wide minimum so near-silent
+    # stretches of stem bleed don't sprout hits.
+    gap_frames = max(1, int(round(HIT_MIN_GAP_SEC / HIT_HOP_SEC)))
+    local_median = median_filter(flux, size=2 * 10 + 1, mode="nearest")
+    nearby_peak = maximum_filter1d(flux, size=2 * int(round(ONSET_CONTEXT_SEC / HIT_HOP_SEC)) + 1, mode="nearest")
+    floor = np.maximum(0.1 * nearby_peak, 0.05 * float(np.percentile(flux, 95)))
+    threshold = 1.5 * local_median + floor
+    is_peak = flux == maximum_filter1d(flux, size=2 * gap_frames + 1, mode="nearest")
+    onset_frames = np.where(is_peak & (flux > threshold))[0]
+    return freqs, frame_times, mag, onset_frames
+
+
+def _onset_time(frame_times: np.ndarray, frame: int) -> float:
+    # frame_times are window centers; the rise that produced a flux peak
+    # began about a hop earlier.
+    return max(float(frame_times[frame]) - HIT_HOP_SEC, 0.0)
+
+
+def detect_onsets(y: np.ndarray, sr: int) -> np.ndarray:
+    """Times (seconds, ascending) at which a hit or note starts in y."""
+    analysis = _onset_analysis(y, sr)
+    if analysis is None:
+        return np.zeros(0)
+    _, frame_times, _, onset_frames = analysis
+    return np.array([_onset_time(frame_times, f) for f in onset_frames])
+
+
 def detect_hits(
     y: np.ndarray,
     sr: int,
@@ -200,41 +260,17 @@ def detect_hits(
     """Turn an unpitched, percussive stem into Notes -- one per drum hit.
 
     The pitch trackers in pitch.py find almost nothing in a drum stem, so
-    this goes by onsets instead: spectral flux (how much energy each
-    frequency bin *gains* from one frame to the next) spikes at every hit,
-    and peaks that stand clear of their local surroundings are taken as
-    onsets. Each hit becomes a Note running until the next hit (capped at
-    HIT_MAX_DURATION_SEC), with a stand-in frequency derived from how bright
-    the hit is (see HIT_PITCH_RANGE_HZ) so the usual sample matching and
-    pitch-shifting downstream works unchanged.
+    this goes by onsets instead (see _onset_analysis). Each hit becomes a
+    Note running until the next hit (capped at HIT_MAX_DURATION_SEC), with
+    a stand-in frequency derived from how bright the hit is (see
+    HIT_PITCH_RANGE_HZ) so the usual sample matching and pitch-shifting
+    downstream works unchanged.
     """
-    from scipy.ndimage import maximum_filter1d, median_filter
-    from scipy.signal import stft
-
+    analysis = _onset_analysis(y, sr)
+    if analysis is None:
+        return []
+    freqs, frame_times, mag, onset_frames = analysis
     hop = max(1, int(round(HIT_HOP_SEC * sr)))
-    if y.size < HIT_N_FFT * 2:
-        return []
-
-    freqs, frame_times, spec = stft(
-        y, fs=sr, nperseg=HIT_N_FFT, noverlap=HIT_N_FFT - hop, boundary=None, padded=False
-    )
-    mag = np.abs(spec)
-    if mag.shape[1] < 3:
-        return []
-
-    # Log-compress so a quiet hi-hat's onset isn't drowned out by the kick's.
-    log_mag = np.log1p(1000.0 * mag)
-    flux = np.concatenate([[0.0], np.maximum(np.diff(log_mag, axis=1), 0.0).sum(axis=0)])
-
-    # A frame is an onset if it's the biggest flux within +/- the minimum
-    # gap AND clears an adaptive threshold: well above what's typical right
-    # around it, and above a floor tied to the track's own stronger onsets
-    # (so near-silent stretches of stem bleed don't sprout hits).
-    gap_frames = max(1, int(round(HIT_MIN_GAP_SEC / HIT_HOP_SEC)))
-    local_median = median_filter(flux, size=2 * 10 + 1, mode="nearest")
-    threshold = 1.5 * local_median + 0.25 * float(np.percentile(flux, 95))
-    is_peak = flux == maximum_filter1d(flux, size=2 * gap_frames + 1, mode="nearest")
-    onset_frames = np.where(is_peak & (flux > threshold))[0]
 
     total_sec = len(y) / sr
     centroid_lo, centroid_hi = HIT_CENTROID_RANGE_HZ
@@ -242,11 +278,9 @@ def detect_hits(
 
     notes: list[Note] = []
     for n, frame in enumerate(onset_frames):
-        # frame_times are window centers; the rise that produced this flux
-        # peak began about a hop earlier.
-        start_t = max(float(frame_times[frame]) - HIT_HOP_SEC, 0.0)
+        start_t = _onset_time(frame_times, frame)
         if n + 1 < len(onset_frames):
-            next_t = float(frame_times[onset_frames[n + 1]]) - HIT_HOP_SEC
+            next_t = _onset_time(frame_times, onset_frames[n + 1])
         else:
             next_t = total_sec
         end_t = min(next_t, start_t + HIT_MAX_DURATION_SEC, total_sec)
