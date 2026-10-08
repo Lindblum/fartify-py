@@ -80,9 +80,12 @@ class PipelineSettings:
     transpose_semitones: int = _option(
         0, "Transpose (semitones)", "output", "Shift the fart melody's pitch (-12 = an octave down).", -24, 24, 1
     )
-    # Guard rail: an extreme shift sounds broken rather than "farty".
+    # Guard rail: an extreme shift sounds broken rather than "farty". Two
+    # octaves, because most fart samples sit at 40-230 Hz while a sung
+    # melody is often 250-500 Hz; at one octave the samples couldn't reach
+    # and Spectral Synthesis played ~1 in 4 voiced notes an octave low.
     max_pitch_shift_semitones: float = _option(
-        12.0, "Max pitch shift (semitones)", "output", "Limit on pitch-shifting a sample, up or down.", 0.0, 36.0, 1.0
+        24.0, "Max pitch shift (semitones)", "output", "Limit on pitch-shifting a sample, up or down.", 0.0, 36.0, 1.0
     )
     mix_with_instrumental: bool = _option(
         True, "Keep backing track", "output", "Mix the farts over the rest of the song; off = farts alone."
