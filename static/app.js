@@ -331,6 +331,11 @@ function setJobState(card, job) {
   const progressStage = card.querySelector(".progress-stage");
   const resultWrap = card.querySelector(".job-result");
   const errorWrap = card.querySelector(".job-error");
+  // Details holds the result text + spectrograms for a finished job, and
+  // the error log for a failed one.
+  const details = card.querySelector(".job-details");
+  const resultMeta = card.querySelector(".result-meta");
+  const errorLog = card.querySelector(".error-log");
   // The download links live in the persistent .job-actions row (alongside
   // delete, which stays available in every state), so they're shown/hidden
   // on their own rather than via their old parent .job-result wrapper.
@@ -346,6 +351,9 @@ function setJobState(card, job) {
     resultWrap.classList.remove("hidden");
     downloadAudio.classList.remove("hidden");
     downloadMidi.classList.remove("hidden");
+    details.classList.remove("hidden");
+    resultMeta.classList.remove("hidden");
+    errorLog.classList.add("hidden");
     fillResult(card, job);
   } else if (job.status === "error") {
     progressWrap.classList.add("hidden");
@@ -354,9 +362,17 @@ function setJobState(card, job) {
     downloadAudio.classList.add("hidden");
     downloadMidi.classList.add("hidden");
     card.querySelector(".error-message").textContent = job.error || "Processing failed";
+    // Jobs that failed before error logs were kept (or were interrupted by
+    // a restart) have no log, so there's nothing to show in Details.
+    details.classList.toggle("hidden", !job.error_log);
+    resultMeta.classList.add("hidden");
+    card.querySelector(".result-spectrograms").classList.add("hidden");
+    errorLog.classList.remove("hidden");
+    errorLog.textContent = job.error_log || "";
   } else {
     resultWrap.classList.add("hidden");
     errorWrap.classList.add("hidden");
+    details.classList.add("hidden");
     downloadAudio.classList.add("hidden");
     downloadMidi.classList.add("hidden");
     progressWrap.classList.remove("hidden");

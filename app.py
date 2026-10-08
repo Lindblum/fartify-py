@@ -191,12 +191,39 @@ def _set_job(job_id: str, **fields):
         _save_jobs_locked()
 
 
+class _ThreadLogCapture(logging.Handler):
+    """Collects the log lines written by one thread (a job's worker), so a
+    failed job can show what led up to the error. Keeps only the last
+    JOB_LOG_MAX_LINES."""
+
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        self.thread_id = threading.get_ident()
+        self.lines: list[str] = []
+        self.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+
+    def emit(self, record: logging.LogRecord):
+        if record.thread != self.thread_id:
+            return
+        try:
+            self.lines.append(self.format(record))
+        except Exception:  # noqa: BLE001 -- a log line must never break the job
+            return
+        del self.lines[:-JOB_LOG_MAX_LINES]
+
+
+# How much of a failed job's log is kept for the page to show.
+JOB_LOG_MAX_LINES = 200
+
+
 def _process_job(job_id: str, input_path: str, settings: PipelineSettings):
     work_dir = os.path.join(OUTPUT_DIR, job_id)
 
     def progress_cb(state: dict):
         _set_job(job_id, **state)
 
+    capture = _ThreadLogCapture()
+    logging.getLogger().addHandler(capture)
     try:
         _set_job(job_id, status="processing", stage="starting", progress=0.0)
         result = run_pipeline(
@@ -222,8 +249,10 @@ def _process_job(job_id: str, input_path: str, settings: PipelineSettings):
             job_result["approx_spectrogram_url"] = f"/jobs/{job_id}/spectrogram/approx"
         _set_job(job_id, status="done", progress=1.0, stage="done", result=job_result)
     except Exception as exc:  # noqa: BLE001
-        logging.exception("job %s failed", job_id)
-        _set_job(job_id, status="error", error=str(exc))
+        logging.exception("job %s failed", job_id)  # captured too, traceback included
+        _set_job(job_id, status="error", error=str(exc), error_log="\n".join(capture.lines))
+    finally:
+        logging.getLogger().removeHandler(capture)
 
 
 @app.route("/")
@@ -524,5 +553,5 @@ def rebuild_samples():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5181))
     app.run(host="0.0.0.0", port=port, debug=True)

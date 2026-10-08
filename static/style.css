@@ -7,6 +7,11 @@
   --muted: #9aa3b5;
   --border: #2b3244;
   --error: #ff6b6b;
+  /* Shared by every text box, dropdown and button. */
+  --control-height: 32px;
+  --control-pad-x: 12px;
+  --control-font-size: 0.9rem;
+  --control-radius: 8px;
 }
 
 * { box-sizing: border-box; }
@@ -39,7 +44,8 @@ h1 { font-size: 2.4rem; margin: 0 0 8px; }
   margin-bottom: 20px;
 }
 
-.hidden { display: none; }
+/* wins over any display a component sets (buttons are inline-flex) */
+.hidden { display: none !important; }
 
 #dropzone {
   display: flex;
@@ -77,12 +83,14 @@ h1 { font-size: 2.4rem; margin: 0 0 8px; }
 
 select, input[type="number"] {
   width: 100%;
-  padding: 9px 10px;
+  height: var(--control-height);
+  padding: 0 var(--control-pad-x);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--bg);
   color: var(--text);
   font: inherit;
+  font-size: var(--control-font-size);
 }
 
 select:focus, input[type="number"]:focus { outline: none; border-color: var(--accent); }
@@ -95,13 +103,15 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 
 .calibration { margin-top: 14px; }
 
-.calibration summary {
+.calibration summary,
+.job-details summary {
   cursor: pointer;
   color: var(--muted);
   font-size: 0.9rem;
   user-select: none;
 }
-.calibration summary:hover { color: var(--accent); }
+.calibration summary:hover,
+.job-details summary:hover { color: var(--accent); }
 
 .field-group {
   border: 1px solid var(--border);
@@ -125,6 +135,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 
 button.link-button {
   width: auto;
+  height: auto;
   margin-top: 12px;
   padding: 0;
   background: none;
@@ -137,17 +148,20 @@ button.link-button {
 button.link-button:hover:not(:disabled) { background: none; color: var(--accent); }
 
 button, .button {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   margin-top: 18px;
   width: 100%;
-  text-align: center;
-  padding: 12px 18px;
+  height: var(--control-height);
+  padding: 0 var(--control-pad-x);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--control-radius);
   background: var(--accent);
   color: #1a1207;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: var(--control-font-size);
   cursor: pointer;
   text-decoration: none;
   transition: background 0.15s ease, opacity 0.15s ease;
@@ -243,6 +257,27 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 
 #progress-stage { color: var(--muted); margin: 0; text-transform: capitalize; }
+
+/* Collapsed by default: the summary line stands in for the result text and
+   spectrograms until opened. */
+.job-details { margin-bottom: 12px; }
+.job-details[open] summary { margin-bottom: 10px; }
+
+/* A failed job's log, inside Details: newest lines (the traceback) last. */
+.error-log {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--bg);
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  white-space: pre;
+}
 
 .result-meta {
   color: var(--muted);
@@ -355,6 +390,8 @@ img.spectrogram {
   margin-top: 0;
 }
 
+.icon { flex: 0 0 auto; display: block; }
+
 .job-actions .delete-job {
   flex: 0 0 auto;
   margin-left: auto; /* stays pinned to the right whether it's alone or beside the download buttons */
@@ -364,12 +401,12 @@ button.icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: var(--control-height);
+  height: var(--control-height);
   margin-top: 0;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--muted);
   font-size: 1rem;

@@ -219,7 +219,7 @@ python scripts/generate_sample_farts.py   # only needed once, to seed samples/
 python app.py
 ```
 
-Then open http://localhost:5000, upload a song, and wait for the progress
+Then open http://localhost:5181, upload a song, and wait for the progress
 bar. When it's done you get an inline player plus download buttons for the
 generated WAV and the extracted melody's MIDI file.
 
