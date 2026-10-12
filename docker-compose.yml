@@ -1,0 +1,19 @@
+services:
+  fartify:
+    build: .
+    ports:
+      - "5181:5181"
+    volumes:
+      - uploads:/app/uploads
+      - output:/app/output
+      - state:/app/state        # jobs_state.json + timings.json
+      - samples:/app/samples    # seeded from the image on first run
+      - torch-cache:/cache/torch  # Demucs / CREPE model weights
+    restart: unless-stopped
+
+volumes:
+  uploads:
+  output:
+  state:
+  samples:
+  torch-cache:

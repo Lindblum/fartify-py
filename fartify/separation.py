@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 import sys
 
@@ -74,6 +75,37 @@ def separate_layer(input_path: str, work_dir: str, layer: str = "vocals", sr: in
     return _separate_naive(input_path, work_dir, sr)
 
 
+def _without_progress_bars(text: str) -> str:
+    """Demucs's stderr is mostly tqdm progress bars, redrawn with carriage
+    returns -- the part that says what actually went wrong is easily cut off
+    behind them. Drop every progress-bar redraw, keep everything else."""
+    pieces = (p.rstrip() for line in text.splitlines() for p in line.split("\r"))
+    return "\n".join(p for p in pieces if p.strip() and not _PROGRESS_BAR.search(p))
+
+
+# A tqdm redraw: "| 64.35/204.75 [00:53<01:58,  1.19seconds/s]"
+_PROGRESS_BAR = re.compile(r"\d+(\.\d+)?/\d+(\.\d+)? \[\d+:\d+<")
+
+
+def _describe_exit(code: int) -> str:
+    """An exit code, plus what it usually means when it's a crash rather
+    than an ordinary error exit."""
+    unsigned = code & 0xFFFFFFFF
+    known = {
+        0xC0000005: "access violation",
+        0xC0000017: "out of memory",
+        0xC00000FD: "stack overflow",
+        0xC0000409: "crashed (stack buffer overrun / fail-fast)",
+        0xC000013A: "interrupted (Ctrl+C or window closed)",
+        0xE0434352: "unhandled .NET exception",
+    }
+    if unsigned in known:
+        return f"code 0x{unsigned:08X} ({known[unsigned]})"
+    if code < 0:  # POSIX: killed by a signal
+        return f"signal {-code}" + (" (killed -- often the system running out of memory)" if code == -9 else "")
+    return f"code {code} (0x{unsigned:08X})" if code > 255 else f"code {code}"
+
+
 def _separate_demucs(input_path: str, work_dir: str, layer: str, sr: int) -> SeparationResult:
     import demucs.separate  # noqa: F401 — just to trigger ImportError early if absent
 
@@ -92,7 +124,12 @@ def _separate_demucs(input_path: str, work_dir: str, layer: str, sr: int) -> Sep
     ]
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.returncode != 0:
-        raise RuntimeError(f"demucs failed: {result.stderr.decode(errors='replace')[-800:]}")
+        output = _without_progress_bars(result.stderr.decode(errors="replace"))
+        # The whole (de-noised) output goes to the job's log; the exception
+        # message only needs the end of it.
+        logger.error("demucs exited with %s; its output:\n%s", _describe_exit(result.returncode), output)
+        tail = "\n".join(output.splitlines()[-15:]) or "(no output)"
+        raise RuntimeError(f"demucs exited with {_describe_exit(result.returncode)}:\n{tail}")
 
     base = os.path.splitext(os.path.basename(input_path))[0]
     # demucs writes <out_dir>/<model_name>/<base>/{<layer>,no_<layer>}.wav

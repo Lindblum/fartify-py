@@ -31,7 +31,7 @@ from fartify.sample_library import (
 )
 from fartify.spectrogram import sample_spectrogram_png
 from fartify.separation import INTERMEDIATE_NAMES
-from fartify.settings import ALGORITHMS, LAYERS, OPTION_NOTES, PipelineSettings, parse_settings, settings_schema
+from fartify.settings import ALGORITHMS, DEFAULT_ALGORITHM, LAYERS, PipelineSettings, parse_settings, settings_schema
 from fartify.utils import midi_to_note_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -40,14 +40,18 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SAMPLES_DIR = os.path.join(BASE_DIR, "samples")
 UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-JOBS_FILE = os.path.join(BASE_DIR, "jobs_state.json")
+# Where the job list and timings live; overridable so a container can keep
+# them on a volume.
+STATE_DIR = os.environ.get("FARTIFY_STATE_DIR", BASE_DIR)
+JOBS_FILE = os.path.join(STATE_DIR, "jobs_state.json")
 # Per-stage timings from past runs, used to estimate how long each stage of
 # the next one will take (see fartify/progress.py).
-TIMINGS_FILE = os.path.join(BASE_DIR, "timings.json")
+TIMINGS_FILE = os.path.join(STATE_DIR, "timings.json")
 
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(SAMPLES_DIR, exist_ok=True)
+os.makedirs(STATE_DIR, exist_ok=True)
 
 # A job's uploaded original and its intermediate files (the separated stems
 # -- see separation.INTERMEDIATE_NAMES) are deleted once they're this old.
@@ -91,7 +95,7 @@ def _load_jobs() -> dict:
     for job in data.values():
         if job.get("status") in ("queued", "processing"):
             job["status"] = "error"
-            job["stage"] = "interrupted"
+            job["stage"] = "Interrupted"
             job["error"] = "Interrupted by a server restart. Please re-upload."
     return data
 
@@ -225,7 +229,7 @@ def _process_job(job_id: str, input_path: str, settings: PipelineSettings):
     capture = _ThreadLogCapture()
     logging.getLogger().addHandler(capture)
     try:
-        _set_job(job_id, status="processing", stage="starting", progress=0.0)
+        _set_job(job_id, status="processing", stage="Starting", progress=0.0)
         result = run_pipeline(
             input_path=input_path,
             work_dir=work_dir,
@@ -247,7 +251,7 @@ def _process_job(job_id: str, input_path: str, settings: PipelineSettings):
             job_result["explained_fraction"] = round(result.explained_fraction, 4)
             job_result["layer_spectrogram_url"] = f"/jobs/{job_id}/spectrogram/layer"
             job_result["approx_spectrogram_url"] = f"/jobs/{job_id}/spectrogram/approx"
-        _set_job(job_id, status="done", progress=1.0, stage="done", result=job_result)
+        _set_job(job_id, status="done", progress=1.0, stage="Done", result=job_result)
     except Exception as exc:  # noqa: BLE001
         logging.exception("job %s failed", job_id)  # captured too, traceback included
         _set_job(job_id, status="error", error=str(exc), error_log="\n".join(capture.lines))
@@ -264,13 +268,14 @@ def index():
     # need fetching, via /samples/<filename> below.
     sample_files = [r.filename for r in records]
     def options(choices: dict) -> list[dict]:
-        return [{"value": key, "label": label, "note": OPTION_NOTES.get(key, "")} for key, label in choices.items()]
+        return [{"value": key, "label": label} for key, label in choices.items()]
 
     return render_template(
         "index.html",
         sample_count=len(records),
         sample_files=sample_files,
-        algorithms=options(ALGORITHMS),
+        default_algorithm=DEFAULT_ALGORITHM,
+        algorithm_labels=ALGORITHMS,
         layers=options(LAYERS),
         setting_groups=settings_schema(),
     )
@@ -421,7 +426,7 @@ def upload():
     with JOBS_LOCK:
         JOBS[job_id] = {
             "status": "queued",
-            "stage": "queued",
+            "stage": "Queued",
             "progress": 0.0,
             "error": None,
             "result": None,
@@ -554,4 +559,5 @@ def rebuild_samples():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5181))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    debug = os.environ.get("FLASK_DEBUG", "1") != "0"
+    app.run(host="0.0.0.0", port=port, debug=debug)

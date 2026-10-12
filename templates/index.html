@@ -4,13 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Fartify 💨</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💨</text></svg>" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
   <main class="wrap">
     <header>
       <h1>Fartify <span class="emoji">💨</span></h1>
-      <p class="tagline">Upload a song. We isolate the vocals (or another layer), extract the melody, and replay it as farts.</p>
+      <p class="tagline">Upload a song, select a layer, and we'll turn it into farts.</p>
     </header>
 
     <section id="upload-card" class="card">
@@ -22,25 +23,15 @@
         <input id="file-input" type="file" name="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac" hidden />
 
         <div class="options">
-          <div class="field-grid">
-            <label class="field">
-              <span class="field-label">Algorithm</span>
-              <select id="algorithm" name="algorithm">
-                {% for a in algorithms %}
-                <option value="{{ a.value }}" data-note="{{ a.note }}">{{ a.label }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label class="field">
-              <span class="field-label">Layer to Fartify</span>
-              <select id="layer" name="layer">
-                {% for l in layers %}
-                <option value="{{ l.value }}" data-note="{{ l.note }}">{{ l.label }}</option>
-                {% endfor %}
-              </select>
-            </label>
-          </div>
-          <div id="option-notes"></div>
+          <input type="hidden" id="algorithm" value="{{ default_algorithm }}" data-labels="{{ algorithm_labels | tojson | forceescape }}" />
+          <label class="field">
+            <span class="field-label">Layer to Fartify</span>
+            <select id="layer" name="layer">
+              {% for l in layers %}
+              <option value="{{ l.value }}">{{ l.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
 
           <details id="calibration" class="calibration">
             <summary>Calibration</summary>
@@ -50,18 +41,16 @@
               <div class="field-grid">
                 {% for f in group.fields %}
                 {% if f.kind == "checkbox" %}
-                <label class="field checkbox-field">
+                <label class="field checkbox-field" title="{{ f.help }}">
                   <span class="checkbox-row">
                     <input type="checkbox" name="{{ f.name }}" data-setting data-label="{{ f.label }}"{% if f.default %} checked{% endif %} />
                     <span class="field-label">{{ f.label }}</span>
                   </span>
-                  <span class="hint">{{ f.help }}</span>
                 </label>
                 {% else %}
-                <label class="field">
+                <label class="field" title="{{ f.help }}">
                   <span class="field-label">{{ f.label }}</span>
                   <input type="number" name="{{ f.name }}" data-setting data-label="{{ f.label }}" value="{{ f.default }}" min="{{ f.min }}" max="{{ f.max }}" step="{{ f.step }}" required />
-                  <span class="hint">{{ f.help }}</span>
                 </label>
                 {% endif %}
                 {% endfor %}
@@ -92,9 +81,6 @@
       <div class="job-progress">
         <div class="progress-bar"><div class="progress-fill"></div></div>
         <p class="progress-stage"></p>
-      </div>
-      <div class="job-error hidden">
-        <p class="error-message"></p>
       </div>
       <details class="job-details hidden">
         <summary>Details</summary>

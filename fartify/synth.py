@@ -161,6 +161,7 @@ def render_note_as_fart(
     sr: int = TARGET_SR,
     recent_usage: dict[str, float] | None = None,
     settings: PipelineSettings | None = None,
+    audio_cache: dict[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, float]:
     """Returns (rendered_audio, emphasis_offset_sec) -- the latter is how far
     into the clip its emphasis point falls, so the caller can shift playback
@@ -174,6 +175,11 @@ def render_note_as_fart(
 
     settings: matching weights and stretch/shift limits (see settings.py);
     None uses the defaults.
+
+    audio_cache: optional shared {filename: decoded audio} dict. Decoding a
+    sample means an ffmpeg run (~65 ms), several times the cost of the
+    pitch shift and stretch, and a song reuses the same few samples
+    hundreds of times -- so a whole track should share one.
     """
     settings = settings or PipelineSettings()
     target_shape = normalize_envelope_shape(note.volume_envelope) if note.volume_envelope else None
@@ -203,7 +209,12 @@ def render_note_as_fart(
     if best is None:
         return np.zeros(int(note.duration_sec * sr), dtype=np.float32), 0.0
 
-    sample_audio, _ = load_audio(os.path.join(samples_dir, best.filename), sr=sr)
+    if audio_cache is not None and best.filename in audio_cache:
+        sample_audio = audio_cache[best.filename]
+    else:
+        sample_audio, _ = load_audio(os.path.join(samples_dir, best.filename), sr=sr)
+        if audio_cache is not None:
+            audio_cache[best.filename] = sample_audio
 
     # Stretch against the sample's effective (silence-trimmed) duration, not
     # its raw file length -- otherwise a sample with room tone padding would
@@ -272,6 +283,7 @@ def synthesize_track(
     total_len = max(int(round(total_duration_sec * sr)), 1)
     output = np.zeros(total_len, dtype=np.float32)
     recent_usage: dict[str, float] = {}
+    audio_cache: dict[str, np.ndarray] = {}
 
     for i, note in enumerate(notes):
         if progress_cb:
@@ -279,7 +291,8 @@ def synthesize_track(
         if note.duration_sec <= 0:
             continue
         rendered, emphasis_offset_sec = render_note_as_fart(
-            note, sample_records, samples_dir, sr=sr, recent_usage=recent_usage, settings=settings
+            note, sample_records, samples_dir, sr=sr, recent_usage=recent_usage, settings=settings,
+            audio_cache=audio_cache,
         )
 
         # Shift playback earlier by the emphasis offset so the sample's own

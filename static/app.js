@@ -76,11 +76,13 @@ function resetInputPanel() {
   submitBtn.disabled = true;
 }
 
-// --- Algorithm + calibration options --------------------------------------
+// --- Layer + calibration options ------------------------------------------
 
-const algorithmSelect = document.getElementById("algorithm");
+// No algorithm picker: the page always runs the server's default (a hidden
+// field), but jobs run with another one (e.g. Classic) still say so.
+const algorithmInput = document.getElementById("algorithm");
+const algorithmLabels = JSON.parse(algorithmInput.dataset.labels);
 const layerSelect = document.getElementById("layer");
-const optionNotes = document.getElementById("option-notes");
 const calibration = document.getElementById("calibration");
 const resetSettingsBtn = document.getElementById("reset-settings");
 const settingInputs = Array.from(document.querySelectorAll("[data-setting]"));
@@ -93,26 +95,15 @@ function settingDefault(input) {
   return input.type === "checkbox" ? input.defaultChecked : Number(input.defaultValue);
 }
 
-// Groups tied to specific algorithms are hidden *and* disabled while another
-// one is selected -- disabled so their fields are skipped by both validation
-// and collectSettings (the server then just uses their defaults).
+// Groups tied to other algorithms are hidden *and* disabled -- disabled so
+// their fields are skipped by both validation and collectSettings (the
+// server then just uses their defaults).
 function syncOptionFields() {
-  const algorithm = algorithmSelect.value;
+  const algorithm = algorithmInput.value;
   calibration.querySelectorAll("fieldset[data-algorithms]").forEach((group) => {
     const applies = group.dataset.algorithms.split(" ").includes(algorithm);
     group.disabled = !applies;
     group.classList.toggle("hidden", !applies);
-  });
-
-  // Any caveat attached to the selected algorithm / layer.
-  optionNotes.replaceChildren();
-  [algorithmSelect, layerSelect].forEach((select) => {
-    const note = select.selectedOptions[0].dataset.note;
-    if (!note) return;
-    const p = document.createElement("p");
-    p.className = "hint";
-    p.textContent = note;
-    optionNotes.appendChild(p);
   });
 }
 
@@ -122,7 +113,7 @@ function optionLabel(select, value) {
 }
 
 function collectSettings() {
-  const settings = { algorithm: algorithmSelect.value, layer: layerSelect.value };
+  const settings = { algorithm: algorithmInput.value, layer: layerSelect.value };
   settingInputs.forEach((input) => {
     if (input.matches(":disabled")) return;
     settings[input.name] = settingValue(input);
@@ -130,11 +121,15 @@ function collectSettings() {
   return settings;
 }
 
-// One-line summary of what a job was run with: its algorithm and layer,
-// plus any calibration field that was moved off its default.
+// One-line summary of what a job was run with: its layer (and algorithm, if
+// not the one the page runs now), plus any calibration field that was moved
+// off its default.
 function describeSettings(settings) {
   if (!settings) return ""; // job predates the options panel
-  const parts = [`Algorithm: ${optionLabel(algorithmSelect, settings.algorithm)}`];
+  const parts = [];
+  if (settings.algorithm && settings.algorithm !== algorithmInput.value) {
+    parts.push(`Algorithm: ${algorithmLabels[settings.algorithm] || settings.algorithm}`);
+  }
   if (settings.layer) parts.push(`Layer: ${optionLabel(layerSelect, settings.layer)}`);
   settingInputs.forEach((input) => {
     const value = settings[input.name];
@@ -145,8 +140,6 @@ function describeSettings(settings) {
   return parts.join(" · ");
 }
 
-algorithmSelect.addEventListener("change", syncOptionFields);
-layerSelect.addEventListener("change", syncOptionFields);
 resetSettingsBtn.addEventListener("click", () => {
   settingInputs.forEach((input) => {
     if (input.type === "checkbox") input.checked = input.defaultChecked;
@@ -200,7 +193,7 @@ form.addEventListener("submit", async (e) => {
   // in-flight — stacks up below it.
   const card = createJobCard(filename);
   jobsContainer.prepend(card);
-  setJobState(card, { status: "queued", stage: "uploading…", progress: 0.02 });
+  setJobState(card, { status: "queued", stage: "Uploading…", progress: 0.02 });
 
   resetInputPanel();
 
@@ -317,6 +310,12 @@ function pollStatus(card, jobId) {
   poll();
 }
 
+// Status text always starts with a capital, including stages recorded by
+// older versions of the server (which stored them lowercase).
+function capitalize(text) {
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+}
+
 const STATUS_LABELS = {
   queued: "Queued",
   processing: "Processing…",
@@ -330,7 +329,6 @@ function setJobState(card, job) {
   const progressFill = card.querySelector(".progress-fill");
   const progressStage = card.querySelector(".progress-stage");
   const resultWrap = card.querySelector(".job-result");
-  const errorWrap = card.querySelector(".job-error");
   // Details holds the result text + spectrograms for a finished job, and
   // the error log for a failed one.
   const details = card.querySelector(".job-details");
@@ -347,7 +345,6 @@ function setJobState(card, job) {
 
   if (job.status === "done") {
     progressWrap.classList.add("hidden");
-    errorWrap.classList.add("hidden");
     resultWrap.classList.remove("hidden");
     downloadAudio.classList.remove("hidden");
     downloadMidi.classList.remove("hidden");
@@ -358,27 +355,25 @@ function setJobState(card, job) {
   } else if (job.status === "error") {
     progressWrap.classList.add("hidden");
     resultWrap.classList.add("hidden");
-    errorWrap.classList.remove("hidden");
     downloadAudio.classList.add("hidden");
     downloadMidi.classList.add("hidden");
-    card.querySelector(".error-message").textContent = job.error || "Processing failed";
-    // Jobs that failed before error logs were kept (or were interrupted by
-    // a restart) have no log, so there's nothing to show in Details.
-    details.classList.toggle("hidden", !job.error_log);
+    // The whole error lives in Details (the status pill already says the
+    // job failed): the job's captured log, or for jobs that failed before
+    // logs were kept, the full error text.
+    details.classList.remove("hidden");
     resultMeta.classList.add("hidden");
     card.querySelector(".result-spectrograms").classList.add("hidden");
     errorLog.classList.remove("hidden");
-    errorLog.textContent = job.error_log || "";
+    errorLog.textContent = job.error_log || job.error || "No log was kept for this job.";
   } else {
     resultWrap.classList.add("hidden");
-    errorWrap.classList.add("hidden");
     details.classList.add("hidden");
     downloadAudio.classList.add("hidden");
     downloadMidi.classList.add("hidden");
     progressWrap.classList.remove("hidden");
     progressFill.style.width = `${((job.progress || 0) * 100).toFixed(1)}%`;
     const eta = formatEta(job.eta_sec);
-    progressStage.textContent = (job.stage || job.status) + (eta ? ` · ${eta}` : "");
+    progressStage.textContent = capitalize(job.stage || job.status) + (eta ? ` · ${eta}` : "");
   }
 }
 

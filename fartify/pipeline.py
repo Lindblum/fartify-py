@@ -77,6 +77,8 @@ def run_pipeline(
     layer_name = LAYERS.get(layer, layer).lower()
     if settings.algorithm == "spectral":
         stages = [("spectral_match", "Matching spectrogram"), ("spectral_render", "Rendering farts")]
+        if layer in pitch.LAYER_PITCH_RANGES:
+            stages.insert(0, ("pitch", "Extracting melody"))
     elif layer in pitch.LAYER_PITCH_RANGES:
         stages = [("pitch", "Extracting melody"), ("synth", "Resynthesizing as farts")]
     else:
@@ -227,10 +229,20 @@ def _resynthesize_spectral(layer_audio, sr, duration_sec, samples_dir, work_dir,
     Also leaves the layer's spectrogram, the approximation built from
     samples, and the placement list (times, pitch shifts, gains) in
     work_dir for inspection."""
+    # A pitched layer's melody, so each beat's sample can be shifted onto
+    # its note -- the same pitch tracker Classic uses.
+    melody = None
+    if settings.layer in pitch.LAYER_PITCH_RANGES:
+        start("pitch")
+        fmin, fmax = pitch.LAYER_PITCH_RANGES[settings.layer]
+        times, f0, conf, backend_name = pitch.extract_pitch(layer_audio, sr, fmin=fmin, fmax=fmax)
+        logger.info("tracked the %s layer's melody using %s", settings.layer, backend_name)
+        melody = (times, f0, conf)
+
     start("spectral_match")
     sample_records = _load_samples(samples_dir)
     target, match = spectral.match_layer(
-        layer_audio, sr, sample_records, samples_dir, settings, progress_cb=tracker.advance
+        layer_audio, sr, sample_records, samples_dir, settings, progress_cb=tracker.advance, melody=melody
     )
 
     # One brightness reference for both images, so they compare directly.

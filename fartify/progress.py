@@ -41,7 +41,9 @@ DEFAULT_STAGE_COSTS = {
     "separate": (5.0, 0.73),
     "pitch": (0.5, 0.125),
     "onsets": (0.0, 0.0016),
-    "synth": (0.5, 0.068),
+    # Per note; mostly pitch shift + stretch now that decoded samples are
+    # cached for the whole track (it was ~0.07 s when every note re-ran ffmpeg).
+    "synth": (0.5, 0.01),
     "mix": (0.1, 0.0015),
     # Spectral Synthesis: matching the spectrogram, then rendering placements.
     "spectral_match": (0.2, 0.017),

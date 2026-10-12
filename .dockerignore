@@ -1,0 +1,25 @@
+# Runtime state and job files -- never bake these into the image
+jobs_state.json
+jobs_state.json.tmp
+timings.json
+timings.json.tmp
+uploads/
+output/
+samples/spectrograms/
+samples/*_index.json.bak
+
+# Dev / VCS clutter
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+**/__pycache__/
+**/*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+.claude/
+*.bat
+.DS_Store

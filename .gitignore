@@ -15,3 +15,4 @@ samples/*_index.json.bak
 .DS_Store
 *.egg-info/
 .pytest_cache/
+*.bat

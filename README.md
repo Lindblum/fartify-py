@@ -104,19 +104,23 @@ and pitch-tracking quality without changing how you use the app.
 
 ## Algorithms and calibration
 
-The input panel has **Algorithm** and **Layer** dropdowns and a collapsible
-**Calibration** section. All are defined in `fartify/settings.py`:
-`PipelineSettings` holds every option's default, range and label, the panel
-is rendered from it, and each job records the settings it ran with.
+The input panel has a **Layer** dropdown and a collapsible **Calibration**
+section. All are defined in `fartify/settings.py`: `PipelineSettings` holds
+every option's default, range and label, the panel is rendered from it, and
+each job records the settings it ran with.
 
-- **Classic** (default) — the note-based pipeline described above.
-- **Spectral Synthesis** — skips note extraction and rebuilds the layer's
-  spectrogram directly out of sample spectrograms; see below.
+Two algorithms are implemented. The panel always runs the default; there's
+no picker for it, but `/upload` still accepts `"algorithm": "classic"` in
+its settings JSON.
+
+- **Spectral Synthesis** (default) — skips note extraction and rebuilds the
+  layer's spectrogram directly out of sample spectrograms; see below.
+- **Classic** — the note-based pipeline described above.
 
 **Layer** picks which part of the song is isolated and replayed as farts;
 everything else becomes the backing track:
 
-- **Vocals** (default), **Bass**, **Other instruments** — pitch-tracked
+- **Vocals** (default), **Bass**, **Other** — pitch-tracked
   into a melody, each with its own search range (`pitch.LAYER_PITCH_RANGES`).
 - **Drums** — unpitched, so hits are found by onset detection
   (`notes.detect_hits`) and each hit's brightness stands in for pitch: kicks
@@ -147,7 +151,7 @@ stamping sample spectrograms onto it. Each stamp — a *placement* — has:
   up or down is exactly a transposition),
 - an **amplification** (brightness).
 
-By default (**Fit samples to beats**) placements follow the layer's beats:
+Placements follow the layer's beats:
 onsets are detected the same way Classic finds drum hits (spectral flux,
 judged against the hits nearby so a quiet intro still counts), and each gap
 from one onset to the next gets exactly one sample — the sample, pitch shift
@@ -156,19 +160,25 @@ its gap is cut off with a short fade where the next beat starts, so one long
 sample never smears across several beats. Beats that are much weaker than
 the ones around them (under the **Detail floor**) are left empty.
 
-With that option off, placements are chosen freely by matching pursuit: take
-the one placement that explains the most of what's still unexplained,
-subtract it, repeat — until the per-second cap is reached or the next
-placement would add too little compared with the strongest one possible in
-the same passage (±2 s).
+On a pitched layer (vocals, bass, other) the layer's melody is tracked first,
+with the same pitch tracker Classic uses (CREPE, or pYIN). A beat's note is
+the median pitch of the confident frames inside it, and each pitched sample
+is shifted so that its own main note (the pitch found when it was analyzed)
+lands exactly on that note. The sample and gain are still whichever fit the
+slice best at that shift. Unpitched samples, beats with no clear note, and
+every beat of the drums layer use whatever shift fits the spectrogram best.
+On two test stems, pinning raised the share of samples sounding within half
+a semitone of the melody from 11% to 86–95%. It also lowered how much of the
+spectrogram is explained (30–35% → 21–22%), since a sample's harmonics and
+noise rarely line up with the voice's as well as a free shift could make
+them. Tracking the melody adds about 25 s to a 3.5-minute song.
 
-Either way, matching runs on spectrograms raised to the **Contrast (gamma)**
+Matching runs on spectrograms raised to the **Contrast (gamma)**
 power (default 1, i.e. raw amplitude). Lowering it compresses loud against
 quiet so soft sounds weigh more, but it also lifts the quiet tails between
 hits, which favors long samples. The audio is then rendered straight from the
 list: each sample pitch-shifted (length unchanged), scaled, cut if its
-placement says so, and added at its time. Samples are never time-stretched
-in this mode.
+placement says so, and added at its time. Samples are never time-stretched.
 
 A finished job shows the layer's spectrogram next to the one rebuilt from
 samples, and how much of the layer's spectrogram energy the placements
@@ -225,6 +235,18 @@ generated WAV and the extracted melody's MIDI file.
 
 `ffmpeg` must be installed and on PATH (`apt install ffmpeg` /
 `brew install ffmpeg` / etc.) — it's used for all audio format handling.
+
+### Docker
+
+```bash
+docker compose up --build
+```
+
+The image bundles ffmpeg and CPU-only torch/demucs/torchcrepe, and serves
+on http://localhost:5181. Existing job files (`uploads/`, `output/`,
+`jobs_state.json`, `timings.json`) are excluded from the image; at runtime
+they live in named volumes, along with `samples/` (seeded from the image
+on first run) and the downloaded model weights.
 
 ## Project layout
 
