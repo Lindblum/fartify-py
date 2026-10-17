@@ -9,7 +9,6 @@ output/*
 jobs_state.json
 jobs_state.json.tmp
 timings.json
-samples/spectrograms/
 timings.json.tmp
 samples/*_index.json.bak
 .DS_Store

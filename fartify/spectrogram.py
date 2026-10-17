@@ -29,7 +29,7 @@ import zlib
 
 import numpy as np
 
-from .utils import TARGET_SR, load_audio
+from .utils import TARGET_SR, file_digest, load_audio
 
 N_FFT = 2048  # ~93 ms window at 22.05 kHz: ~11 Hz resolution, enough to separate a low fart's harmonics
 HOP_LENGTH = 512  # ~23 ms per column
@@ -153,13 +153,13 @@ def write_sample_spectrogram(samples_dir: str, filename: str, y: np.ndarray, sr:
     spec = compute_spectrogram(y, sr)
     npz_path, png_path = _cache_paths(samples_dir, filename)
     os.makedirs(os.path.dirname(npz_path), exist_ok=True)
-    np.savez_compressed(npz_path, spec=spec, params=_PARAMS, source_mtime_ns=_source_mtime_ns(samples_dir, filename))
+    np.savez_compressed(npz_path, spec=spec, params=_PARAMS, source_sha1=_source_sha1(samples_dir, filename))
     save_png(spec, png_path)
     return spec
 
 
-def _source_mtime_ns(samples_dir: str, filename: str) -> int:
-    return os.stat(os.path.join(samples_dir, filename)).st_mtime_ns
+def _source_sha1(samples_dir: str, filename: str) -> str:
+    return file_digest(os.path.join(samples_dir, filename))
 
 
 def load_sample_spectrogram(samples_dir: str, filename: str) -> np.ndarray:
@@ -171,7 +171,7 @@ def load_sample_spectrogram(samples_dir: str, filename: str) -> np.ndarray:
     if os.path.exists(npz_path) and os.path.exists(png_path):
         try:
             with np.load(npz_path) as cached:
-                if np.array_equal(cached["params"], _PARAMS) and int(cached["source_mtime_ns"]) == _source_mtime_ns(
+                if np.array_equal(cached["params"], _PARAMS) and str(cached["source_sha1"]) == _source_sha1(
                     samples_dir, filename
                 ):
                     return cached["spec"]

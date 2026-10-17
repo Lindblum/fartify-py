@@ -10,6 +10,7 @@ Fartify runnable in "lite mode" even before the heavier optional deps
 """
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import tempfile
@@ -26,6 +27,17 @@ TARGET_SR = 22050  # internal working sample rate for pitch/note analysis and sy
 ENVELOPE_SHAPE_POINTS = 12
 
 FFMPEG_BIN = shutil.which("ffmpeg")
+
+
+def file_digest(path: str) -> str:
+    """SHA-1 of a file's bytes. Used to tell whether a cached analysis still
+    matches its source file -- by content, not mtime, since a fresh git
+    clone or Docker build gives every file a new mtime."""
+    h = hashlib.sha1()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _read_wav_pcm(path: str) -> tuple[np.ndarray, int]:

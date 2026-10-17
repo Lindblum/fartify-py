@@ -26,7 +26,7 @@ For every WAV file in samples/, we keep track of:
     averages happen to line up.
 
 The record is cached in samples/samples_index.json and rebuilt whenever a
-sample is added, removed, or changes on disk (mtime + size fingerprint).
+sample is added, removed, or changes on disk (size + content-hash fingerprint).
 
 Analyzing a sample also generates its log-frequency spectrogram (array +
 PNG, see spectrogram.py), cached under samples/spectrograms/ rather than in
@@ -41,7 +41,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 
 from .spectrogram import load_sample_spectrogram, remove_sample_spectrogram, write_sample_spectrogram
-from .utils import ENVELOPE_SHAPE_POINTS, TARGET_SR, hz_to_midi, load_audio, resample_1d, rms, rms_to_dbfs
+from .utils import ENVELOPE_SHAPE_POINTS, TARGET_SR, file_digest, hz_to_midi, load_audio, resample_1d, rms, rms_to_dbfs
 
 INDEX_FILENAME = "samples_index.json"
 
@@ -68,12 +68,11 @@ class SampleRecord:
     pitch_confidence: float  # 0..1 -- how much frequency_hz can be trusted as "a note" vs. noise
     emphasis_sec: float  # timestamp of the sound's main accent/punch, seconds from clip start
     envelope_shape: list[float]  # normalized (duration + loudness) amplitude contour, ENVELOPE_SHAPE_POINTS long
-    fingerprint: str  # f"{mtime}:{size}" — used to detect staleness
+    fingerprint: str  # f"{size}:{sha1}" — used to detect staleness
 
 
 def _fingerprint(path: str) -> str:
-    st = os.stat(path)
-    return f"{st.st_mtime_ns}:{st.st_size}"
+    return f"{os.path.getsize(path)}:{file_digest(path)}"
 
 
 def estimate_pitch(y: np.ndarray, sr: int) -> tuple[float, float]:

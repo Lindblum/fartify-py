@@ -5,7 +5,6 @@ timings.json
 timings.json.tmp
 uploads/
 output/
-samples/spectrograms/
 samples/*_index.json.bak
 
 # Dev / VCS clutter
